@@ -25,24 +25,48 @@ class MiniROCA:
         # (Simplificación para la demo)
         self.group_limit = 10000
 
+    def _is_prime_miller_rabin(self, n, k=10):
+        """Test probabilístico de primalidad (Miller-Rabin)."""
+        if n < 2:
+            return False
+        if n == 2 or n == 3:
+            return True
+        if n % 2 == 0 or n % 3 == 0:
+            return False
+        r, s = 0, n - 1
+        while s % 2 == 0:
+            r += 1
+            s //= 2
+        for _ in range(k):
+            a = random.randrange(2, n - 1)
+            x = pow(a, s, n)
+            if x == 1 or x == n - 1:
+                continue
+            for _ in range(r - 1):
+                x = pow(x, 2, n)
+                if x == n - 1:
+                    break
+            else:
+                return False
+        return True
+
+    def _generate_vulnerable_prime(self, a_exp):
+        """Genera un primo p = k*M + r, asegurando que sea primo."""
+        residue = pow(self.GENERATOR, a_exp, self.M)
+        k = 1  # Empezar a buscar k desde 1
+        while True:
+            p_candidate = k * self.M + residue
+            if self._is_prime_miller_rabin(p_candidate):
+                return p_candidate
+            k += 1  # Probar con el siguiente k
+
     # --- 1. GENERADOR DE LA VÍCTIMA ---
     def generate_vulnerable_keypair(self):
         """Genera una clave privada (p, q) y pública (N) con estructura Infineon"""
-        # Generamos p con la fórmula: p = k * M + (65537^a mod M)
-        a_p = random.randint(1, self.group_limit)  # Exponente secreto
-        k_p = random.randint(1, 100)  # Multiplicador aleatorio
-
-        # Residuo específico de Infineon
-        residue_p = pow(self.GENERATOR, a_p, self.M)
-        p = k_p * self.M + residue_p
-
-        # Hacemos lo mismo para q
-        a_q = random.randint(1, self.group_limit)
-        k_q = random.randint(1, 100)
-        residue_q = pow(self.GENERATOR, a_q, self.M)
-        q = k_q * self.M + residue_q
-
-        # Calculamos N
+        a_p = random.randint(1, self.group_limit // 2)  # Exponente secreto para p
+        p = self._generate_vulnerable_prime(a_p)
+        a_q = random.randint(1, self.group_limit // 2)  # Exponente secreto para q
+        q = self._generate_vulnerable_prime(a_q)
         N = p * q
         return N, p, q, a_p, a_q
 
@@ -59,12 +83,11 @@ class MiniROCA:
         current_residue = 1
 
         for a in range(1, self.group_limit * 2):
-            attempts += 1
-
             current_residue = (current_residue * self.GENERATOR) % self.M
 
             for k_guess in range(1, 150):  # Asumimos k pequeño para la demo
                 p_candidate = k_guess * self.M + current_residue
+                attempts += 1
 
                 if p_candidate > 1 and N % p_candidate == 0:
                     end_time = time.time()
